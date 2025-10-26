@@ -7,7 +7,7 @@ pipeline {
     }
 
     environment {
-        NEXUS_URL      = "http://44.211.151.128:30881/repository/maven-releases/"
+        NEXUS_URL      = "http://44.211.151.128:30881/"
         NEXUS_REPO     = "maven-releases"
         SONAR_HOST_URL = "http://34.205.140.154:30001/"
         AWS_REGION     = "us-east-1"
