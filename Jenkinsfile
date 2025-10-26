@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    tools {
+        maven 'Maven3'   // Make sure you configured Maven in Jenkins global tools
+        jdk 'Java17'     // Configure JDK in Jenkins global tools
+    }
+
     environment {
         NEXUS_URL      = "http://44.211.151.128:30881/repository/maven-releases/"
         NEXUS_REPO     = "maven-releases"
@@ -8,6 +13,7 @@ pipeline {
         AWS_REGION     = "us-east-1"
         AWS_ACCOUNT_ID = "615299740590"
         ECR_REPO       = "demo-sonar-repo"
+        WORKSPACE_DIR  = "${env.WORKSPACE}"
     }
 
     triggers {
@@ -15,6 +21,15 @@ pipeline {
     }
 
     stages {
+
+        stage('Prepare Workspace') {
+            steps {
+                echo "Fixing permissions..."
+                sh 'sudo chown -R jenkins:jenkins $WORKSPACE_DIR || true'
+                sh 'sudo chmod -R 755 $WORKSPACE_DIR || true'
+            }
+        }
+
         stage('Checkout Code') {
             steps {
                 checkout scm
@@ -23,7 +38,6 @@ pipeline {
 
         stage('Code Scan (SonarQube)') {
             steps {
-                // Replace 'SonarQube' with the actual SonarQube installation name in Jenkins
                 withSonarQubeEnv('SonarQube') {
                     withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
                         sh '''
@@ -36,9 +50,9 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Build Application') {
             steps {
-                sh 'mvn -B -DskipTests=false package'
+                sh 'mvn -B clean package -DskipTests=false'
             }
         }
 
@@ -47,27 +61,24 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
                     sh '''
                         mvn -B deploy -DskipTests \
-                            -DaltDeploymentRepository=nexus::default::${NEXUS_URL}/repository/${NEXUS_REPO}/ \
+                            -DaltDeploymentRepository=nexus::default::${NEXUS_URL} \
                             -Dnexus.username=${NEXUS_USER} -Dnexus.password=${NEXUS_PASS}
                     '''
                 }
             }
         }
 
-        stage('Docker Image Build & Push to AWS ECR') {
+        stage('Docker Build & Push to AWS ECR') {
             steps {
                 script {
                     def ecrUri = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
                     withAWS(credentials: 'aws-ecr-creds', region: "${AWS_REGION}") {
                         sh '''
-                            # Create repo if not exists
                             aws ecr describe-repositories --repository-names ${ECR_REPO} || \
                                 aws ecr create-repository --repository-name ${ECR_REPO}
 
-                            # Login to ECR
                             aws ecr get-login-password | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
-                            # Build and push Docker image
                             docker build -t ${ECR_REPO}:${GIT_COMMIT} .
                             docker tag ${ECR_REPO}:${GIT_COMMIT} ${ecrUri}:${GIT_COMMIT}
                             docker push ${ecrUri}:${GIT_COMMIT}
@@ -83,10 +94,10 @@ pipeline {
 
     post {
         success {
-            echo "Pipeline completed successfully."
+            echo "✅ Pipeline completed successfully."
         }
         failure {
-            echo "Pipeline failed."
+            echo "❌ Pipeline failed. Check logs for details."
         }
     }
 }
