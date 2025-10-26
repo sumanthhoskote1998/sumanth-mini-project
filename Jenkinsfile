@@ -6,7 +6,7 @@ pipeline {
     NEXUS_REPO      = "maven-releases"
     NEXUS_CREDS     = credentials('nexus-credentials')    // username/password credential id
     SONAR_HOST_URL  = "http://34.205.140.154:30001/"
-    SONAR_TOKEN     = credentials('sonar-token')         // secret text
+    SONAR_TOKEN     = credentials('sonarqube-token')      // secret text
     AWS_REGION      = "us-east-1"
     AWS_ACCOUNT_ID  = "615299740590"
     ECR_REPO        = "demo-sonar-repo"
@@ -26,7 +26,7 @@ pipeline {
 
     stage('Code Scan (SonarQube)') {
       steps {
-        withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+        withSonarQubeEnv('sonarqube-token') {
           sh '''
             mvn -B clean verify sonar:sonar \
               -Dsonar.host.url=${SONAR_HOST_URL} \
@@ -58,15 +58,12 @@ pipeline {
       steps {
         script {
           def ecrUri = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
-          withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              credentialsId: 'aws-creds'
-            ]]) {
+          withAWS(credentials: 'aws-ecr-creds', region: "${AWS_REGION}") {
             sh '''
-              aws ecr describe-repositories --region ${AWS_REGION} --repository-names ${ECR_REPO} || \
-                aws ecr create-repository --region ${AWS_REGION} --repository-name ${ECR_REPO}
+              aws ecr describe-repositories --repository-names ${ECR_REPO} || \
+                aws ecr create-repository --repository-name ${ECR_REPO}
 
-              aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+              aws ecr get-login-password | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
               docker build -t ${ECR_REPO}:${GIT_COMMIT} .
               docker tag ${ECR_REPO}:${GIT_COMMIT} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${GIT_COMMIT}
@@ -90,5 +87,4 @@ pipeline {
     }
   }
 }
-EOF
 
