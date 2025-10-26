@@ -1,17 +1,16 @@
-cat > Jenkinsfile <<'EOF'
 pipeline {
   agent any
 
   environment {
-    NEXUS_URL       = "http://<NEXUS_HOST>:8081"
+    NEXUS_URL       = "http://44.211.151.128:30881/"
     NEXUS_REPO      = "maven-releases"
     NEXUS_CREDS     = credentials('nexus-credentials')    // username/password credential id
-    SONAR_HOST_URL  = "http://<SONAR_HOST>:9000"
+    SONAR_HOST_URL  = "http://34.205.140.154:30001/"
     SONAR_TOKEN     = credentials('sonar-token')         // secret text
     AWS_REGION      = "us-east-1"
-    AWS_ACCOUNT_ID  = "<AWS_ACCOUNT_ID>"
+    AWS_ACCOUNT_ID  = "615299740590"
     ECR_REPO        = "demo-sonar-repo"
-    AWS_CREDENTIALS = credentials('aws-creds')
+    AWS_CREDENTIALS = credentials('aws-ecr-creds')
   }
 
   triggers {
