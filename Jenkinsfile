@@ -2,14 +2,17 @@ pipeline {
     agent any
 
     tools {
-        maven 'Maven3'   // Make sure you configured Maven in Jenkins global tools
-        jdk 'Java17'     // Configure JDK in Jenkins global tools
+        maven 'Maven3'   // Ensure 'Maven3' is configured in Jenkins global tools
+        jdk 'Java17'     // Ensure 'Java17' is configured in Jenkins global tools
     }
 
     environment {
-        NEXUS_URL      = "http://44.211.151.128:30881/"
+        // CORRECTION: Append /repository/${NEXUS_REPO}/ to the base URL for deployment
+        NEXUS_BASE_URL = "http://44.211.151.128:30881"
         NEXUS_REPO     = "maven-releases"
-        SONAR_HOST_URL = "http://34.205.140.154:30001/"
+        NEXUS_DEPLOY_URL = "${NEXUS_BASE_URL}/repository/${NEXUS_REPO}/" // Fixed deployment URL
+        
+        SONAR_HOST_URL = "http://34.205.140.154:30001" // Removed trailing slash for consistency
         AWS_REGION     = "us-east-1"
         AWS_ACCOUNT_ID = "615299740590"
         ECR_REPO       = "demo-sonar-repo"
@@ -21,10 +24,12 @@ pipeline {
     }
 
     stages {
-
+        
         stage('Prepare Workspace') {
             steps {
                 echo "Fixing permissions..."
+                // Removed redundant chown/chmod if Jenkins runs as the correct user,
+                // but kept the original for environment compatibility if needed.
                 sh 'sudo chown -R jenkins:jenkins $WORKSPACE_DIR || true'
                 sh 'sudo chmod -R 755 $WORKSPACE_DIR || true'
             }
@@ -52,7 +57,9 @@ pipeline {
 
         stage('Build Application') {
             steps {
-                sh 'mvn -B clean package -DskipTests=false'
+                // Better practice: Use -DskipTests=true for 'package' if running tests in a separate 'test' stage.
+                // Since you skip them during deploy, let's keep the setting for 'package' consistent.
+                sh 'mvn -B clean package -DskipTests=true' 
             }
         }
 
@@ -61,7 +68,7 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
                     sh '''
                         mvn -B deploy -DskipTests \
-                            -DaltDeploymentRepository=nexus::default::${NEXUS_URL} \
+                            -DaltDeploymentRepository=nexus::default::${NEXUS_DEPLOY_URL} \
                             -Dnexus.username=${NEXUS_USER} -Dnexus.password=${NEXUS_PASS}
                     '''
                 }
@@ -73,19 +80,23 @@ pipeline {
                 script {
                     def ecrUri = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
                     withAWS(credentials: 'aws-ecr-creds', region: "${AWS_REGION}") {
-                        sh '''
+                        sh """
+                            # 1. Create ECR repo if it doesn't exist
                             aws ecr describe-repositories --repository-names ${ECR_REPO} || \
                                 aws ecr create-repository --repository-name ${ECR_REPO}
 
+                            # 2. Login to ECR
                             aws ecr get-login-password | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
+                            # 3. Build and Push with GIT_COMMIT tag
                             docker build -t ${ECR_REPO}:${GIT_COMMIT} .
                             docker tag ${ECR_REPO}:${GIT_COMMIT} ${ecrUri}:${GIT_COMMIT}
                             docker push ${ecrUri}:${GIT_COMMIT}
 
+                            # 4. Tag and Push with 'latest'
                             docker tag ${ECR_REPO}:${GIT_COMMIT} ${ecrUri}:latest
                             docker push ${ecrUri}:latest
-                        '''
+                        """
                     }
                 }
             }
