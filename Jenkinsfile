@@ -1,39 +1,76 @@
 pipeline {
     agent any
 
+    tools {
+        maven 'Maven3'    // Ensure configured under Manage Jenkins → Global Tool Configuration
+        jdk 'Java17'      // Ensure configured under Manage Jenkins → Global Tool Configuration
+    }
+
     environment {
-        AWS_REGION = "us-east-1"
-        REPO_NAME = "demo-sonar-repo"
-        IMAGE_TAG = "${BUILD_NUMBER}"
-        ECR_URL = "615299740590.dkr.ecr.${AWS_REGION}.amazonaws.com/${REPO_NAME}"
+        NEXUS_BASE_URL   = "http://13.222.23.48:30881"
+        NEXUS_REPO       = "maven-releases"
+        NEXUS_DEPLOY_URL = "${NEXUS_BASE_URL}/repository/${NEXUS_REPO}/"
+
+        SONAR_HOST_URL   = "http://18.206.252.221"
+        AWS_REGION       = "us-east-1"
+        AWS_ACCOUNT_ID   = "615299740590"
+        ECR_REPO         = "demo-sonar-repo"
+
+        WORKSPACE_DIR    = "${env.WORKSPACE}"
+    }
+
+    triggers {
+        githubPush()   // Auto-trigger on GitHub push
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Prepare Workspace') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/sumanthhoskote1998/demo-sonar-nexus-ecr.git'
+                echo "🧹 Fixing permissions..."
+                sh 'sudo chown -R jenkins:jenkins $WORKSPACE_DIR || true'
+                sh 'sudo chmod -R 755 $WORKSPACE_DIR || true'
             }
         }
 
-        stage('Build with Maven') {
+        stage('Checkout Code') {
             steps {
-                sh 'mvn clean package -DskipTests'
+                echo "📦 Checking out code from GitHub..."
+                checkout scm
             }
         }
 
-        stage('SonarQube Analysis') {
-            environment {
-                scannerHome = tool 'sonar-scanner'
-            }
+        stage('Code Scan (SonarQube)') {
             steps {
-                withSonarQubeEnv('sonar-server') {
+                echo "🔍 Running SonarQube code analysis..."
+                withSonarQubeEnv('SonarQube') {
+                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+                        sh '''
+                            mvn -B clean verify sonar:sonar \
+                                -Dsonar.host.url=${SONAR_HOST_URL} \
+                                -Dsonar.login=${SONAR_TOKEN}
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Build Application') {
+            steps {
+                echo "🏗️ Building JAR package..."
+                sh 'mvn -B clean package -DskipTests=true'
+            }
+        }
+
+        stage('Store Artifacts in Nexus') {
+            steps {
+                echo "⬆️ Uploading artifacts to Nexus..."
+                withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
                     sh '''
-                        ${scannerHome}/bin/sonar-scanner \
-                        -Dsonar.projectKey=demo-sonar-nexus-ecr \
-                        -Dsonar.sources=src \
-                        -Dsonar.java.binaries=target/classes
+                        mvn -B deploy -DskipTests \
+                        -DaltDeploymentRepository=nexus::default::$NEXUS_DEPLOY_URL \
+                        -Dnexus.username=$NEXUS_USER \
+                        -Dnexus.password=$NEXUS_PASS
                     '''
                 }
             }
@@ -42,25 +79,29 @@ pipeline {
         stage('Docker Build & Push to AWS ECR') {
             steps {
                 script {
-                    withAWS(region: "${AWS_REGION}", credentials: 'aws-credentials') {
-                        sh '''
-                            echo "Ensuring ECR repository exists..."
-                            aws ecr describe-repositories --repository-names ${REPO_NAME} || \
-                            aws ecr create-repository --repository-name ${REPO_NAME}
+                    echo "🐳 Building Docker image and pushing to ECR..."
+                    def ecrUri = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
 
-                            echo "Logging in to ECR..."
-                            aws ecr get-login-password --region ${AWS_REGION} | \
-                            docker login --username AWS --password-stdin ${ECR_URL}
+                    withAWS(credentials: 'aws-ecr-creds', region: "${AWS_REGION}") {
+                        sh """
+                            # 1. Ensure ECR repo exists
+                            aws ecr describe-repositories --repository-names ${ECR_REPO} || \
+                                aws ecr create-repository --repository-name ${ECR_REPO}
 
-                            echo "Building Docker image..."
-                            docker build -t ${REPO_NAME}:${IMAGE_TAG} .
+                            # 2. Login to ECR
+                            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
-                            echo "Tagging Docker image..."
-                            docker tag ${REPO_NAME}:${IMAGE_TAG} ${ECR_URL}:${IMAGE_TAG}
+                            # 3. Build Docker image using the existing Dockerfile in repo
+                            docker build -t ${ECR_REPO}:${GIT_COMMIT} .
 
-                            echo "Pushing Docker image to ECR..."
-                            docker push ${ECR_URL}:${IMAGE_TAG}
-                        '''
+                            # 4. Tag for commit and latest
+                            docker tag ${ECR_REPO}:${GIT_COMMIT} ${ecrUri}:${GIT_COMMIT}
+                            docker tag ${ECR_REPO}:${GIT_COMMIT} ${ecrUri}:latest
+
+                            # 5. Push both tags
+                            docker push ${ecrUri}:${GIT_COMMIT}
+                            docker push ${ecrUri}:latest
+                        """
                     }
                 }
             }
@@ -72,7 +113,7 @@ pipeline {
             echo "✅ Pipeline completed successfully!"
         }
         failure {
-            echo "❌ Pipeline failed. Please check above logs for the error details."
+            echo "❌ Pipeline failed. Check logs above for exact issue."
         }
     }
 }
