@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Checkout Code') {
             steps {
-                git 'https://github.com/your-repo/demo-sonar-nexus-ecr.git'
+                git 'https://github.com/sumanthhoskote1998/sumanth-mini-project.git'
             }
         }
 
