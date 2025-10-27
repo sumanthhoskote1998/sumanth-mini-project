@@ -64,16 +64,18 @@ pipeline {
         }
 
         stage('Store Artifacts in Nexus') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
-                    sh '''
-                        mvn -B deploy -DskipTests \
-                            -DaltDeploymentRepository=nexus::default::${NEXUS_DEPLOY_URL} \
-                            -Dnexus.username=${NEXUS_USER} -Dnexus.password=${NEXUS_PASS}
-                    '''
-                }
-            }
+    steps {
+        withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+            sh '''
+                mvn -B deploy -DskipTests \
+                -DaltDeploymentRepository=nexus::default::$NEXUS_DEPLOY_URL \
+                -Dnexus.username=$NEXUS_USER \
+                -Dnexus.password=$NEXUS_PASS
+            '''
         }
+    }
+}
+
 
         stage('Docker Build & Push to AWS ECR') {
             steps {
