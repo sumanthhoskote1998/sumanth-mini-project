@@ -8,12 +8,12 @@ pipeline {
 
     environment {
         // ------------------- Nexus Config -------------------
-        NEXUS_BASE_URL   = "http://13.222.23.48:30881"
+        NEXUS_BASE_URL   = "http://98.81.241.146:30881"
         NEXUS_REPO       = "maven-releases"
         NEXUS_DEPLOY_URL = "${NEXUS_BASE_URL}/repository/${NEXUS_REPO}/"
 
         // ------------------- SonarQube Config -------------------
-        SONAR_HOST_URL = "http://18.206.252.221"
+        SONAR_HOST_URL = "http://52.87.156.232:30001"
 
         // ------------------- AWS Config -------------------
         AWS_REGION     = "us-east-1"
