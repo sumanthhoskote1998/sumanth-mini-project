@@ -8,7 +8,7 @@ pipeline {
 
     environment {
         // CORRECTION: Append /repository/${NEXUS_REPO}/ to the base URL for deployment
-        NEXUS_BASE_URL = "http://44.211.151.128:30881"
+        NEXUS_BASE_URL = "http://13.222.23.48:30881"
         NEXUS_REPO     = "maven-releases"
         NEXUS_DEPLOY_URL = "${NEXUS_BASE_URL}/repository/${NEXUS_REPO}/" // Fixed deployment URL
         
