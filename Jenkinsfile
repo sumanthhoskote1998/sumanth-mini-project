@@ -13,7 +13,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 git branch: 'main',
-                    url: 'https://github.com/<your-username>/demo-sonar-nexus-ecr.git'
+                    url: 'https://github.com/sumanthhoskote1998/demo-sonar-nexus-ecr.git'
             }
         }
 
