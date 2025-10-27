@@ -12,7 +12,7 @@ pipeline {
         NEXUS_REPO     = "maven-releases"
         NEXUS_DEPLOY_URL = "${NEXUS_BASE_URL}/repository/${NEXUS_REPO}/" // Fixed deployment URL
         
-        SONAR_HOST_URL = "http://34.205.140.154:30001" // Removed trailing slash for consistency
+        SONAR_HOST_URL = "http://18.206.252.221" // Removed trailing slash for consistency
         AWS_REGION     = "us-east-1"
         AWS_ACCOUNT_ID = "615299740590"
         ECR_REPO       = "demo-sonar-repo"
