@@ -4,10 +4,11 @@ metadata:
   name: demo-app-service
   namespace: demo
 spec:
-  type: LoadBalancer
   selector:
     app: demo-app
+  type: NodePort
   ports:
-    - port: 80
+    - protocol: TCP
+      port: 80
       targetPort: 8080
-
+      nodePort: 30080
