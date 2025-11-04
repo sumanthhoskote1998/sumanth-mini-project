@@ -13,9 +13,11 @@ spec:
       labels:
         app: demo-app
     spec:
+      imagePullSecrets:
+      - name: aws-ecr-creds
       containers:
-        - name: demo-app
-          image: 615299740590.dkr.ecr.us-east-1.amazonaws.com/demo-sonar-repo:latest
-          ports:
-            - containerPort: 8080
-
+      - name: demo-app
+        image: 615299740590.dkr.ecr.us-east-1.amazonaws.com/demo-sonar-repo:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
